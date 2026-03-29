@@ -1,25 +1,28 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Search from "./components/Search";
 import Spinner from "./components/Spinner";
-import { MovieCard, type Movie } from "./components/MovieCard";
+import { MovieCard } from "./components/MovieCard";
 import { useDebounce } from "react-use";
 import {
   updateSearchCount,
   type UpdateSearchCountProps,
   getTrendingMovies,
 } from "./appwrite";
-import { type Models } from "appwrite";
+import type { Movie, TMDBResponse, TrendingMovie, ApiOptions } from "./types";
+import { getErrorMessage, APIError } from "./utils/errors";
 
-const API_BASE_URL: string = "https://api.themoviedb.org/3";
-const API_KEY: string = import.meta.env.VITE_TMDB_API_KEY;
+const API_BASE_URL = "https://api.themoviedb.org/3";
 
-type ApiOptions = {
-  method: string;
-  headers: {
-    Authorization: string;
-    accept: string;
-  };
+// Validate and get API key
+const getApiKey = (): string => {
+  const apiKey = import.meta.env.VITE_TMDB_API_KEY;
+  if (!apiKey) {
+    throw new Error("Missing VITE_TMDB_API_KEY environment variable");
+  }
+  return apiKey;
 };
+
+const API_KEY = getApiKey();
 
 const API_OPTIONS: ApiOptions = {
   method: "GET",
@@ -33,7 +36,7 @@ const App = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [movieList, setMovieList] = useState<Movie[]>([]);
-  const [trendingMovies, setTrendingMovies] = useState<Models.DefaultRow[]>([]);
+  const [trendingMovies, setTrendingMovies] = useState<TrendingMovie[]>([]);
   const [loading, setLoading] = useState(false);
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
 
@@ -45,7 +48,7 @@ const App = () => {
     [searchTerm],
   );
 
-  const fetchMovies = async (query = "") => {
+  const fetchMovies = useCallback(async (query = ""): Promise<void> => {
     setLoading(true);
     setErrorMessage("");
 
@@ -56,13 +59,14 @@ const App = () => {
 
       const response = await fetch(endPoint, API_OPTIONS);
       if (!response.ok) {
-        console.error(`Failed to fetch movies: ${response}`);
-        throw new Error(`Failed to fetch movies`);
+        throw new APIError(
+          response.status,
+          `Failed to fetch movies: ${response.statusText}`,
+        );
       }
 
-      const data = await response.json();
-      if (data.Response == "False") {
-        console.error(`Invalid data format: ${data}`);
+      const data = (await response.json()) as TMDBResponse;
+      if (data.Response === "False") {
         setErrorMessage(data.Error || "Failed to fetch movies.");
         setMovieList([]);
         return;
@@ -71,7 +75,7 @@ const App = () => {
       setMovieList(data.results || []);
 
       if (query && data.results && data.results.length > 0) {
-        const UpdateSearchCount: UpdateSearchCountProps = {
+        const updateData: UpdateSearchCountProps = {
           searchTerm: query,
           movie: {
             id: data.results[0].id,
@@ -79,36 +83,38 @@ const App = () => {
           },
         };
 
-        await updateSearchCount(UpdateSearchCount);
+        await updateSearchCount(updateData);
       }
     } catch (error) {
-      console.error(`Error fetching movies: ${error}`);
+      const errorMsg = getErrorMessage(error);
+      console.error(`Error fetching movies: ${errorMsg}`);
       setErrorMessage("Failed to fetch movies. Please try again later.");
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const fetchTrendingMovies = async () => {
+  const fetchTrendingMovies = useCallback(async (): Promise<void> => {
     try {
       const result = await getTrendingMovies();
       setTrendingMovies(result);
     } catch (error) {
-      console.error("Error fetching trending movies:", error);
+      const errorMsg = getErrorMessage(error);
+      console.error("Error fetching trending movies:", errorMsg);
     }
-  };
+  }, []);
 
-  function fnSearchTerm(searchTerm: string) {
+  function fnSearchTerm(searchTerm: string): void {
     setSearchTerm(searchTerm);
   }
 
   useEffect(() => {
     fetchMovies(debouncedSearchTerm);
-  }, [debouncedSearchTerm]);
+  }, [debouncedSearchTerm, fetchMovies]);
 
   useEffect(() => {
     fetchTrendingMovies();
-  }, []);
+  }, [fetchTrendingMovies]);
 
   return (
     <main>

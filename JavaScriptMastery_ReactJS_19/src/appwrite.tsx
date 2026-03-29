@@ -1,8 +1,28 @@
-import { Client, ID, Query, TablesDB, type Models } from "appwrite";
+import { Client, ID, Query, TablesDB } from "appwrite";
+import type { TrendingMovie } from "./types";
+import { getErrorMessage, EnvironmentError } from "./utils/errors";
 
-const PROJECT_ID: string = import.meta.env.VITE_APPWRITE_PROJECT_ID;
-const DATABASE_ID: string = import.meta.env.VITE_APPWRITE_DATABASE_ID;
-const TABLE_ID: string = import.meta.env.VITE_APPWRITE_Table_ID;
+// Validate environment variables
+const validateEnvVariables = (): void => {
+  const requiredVars = [
+    "VITE_APPWRITE_PROJECT_ID",
+    "VITE_APPWRITE_DATABASE_ID",
+    "VITE_APPWRITE_Table_ID",
+  ] as const;
+
+  for (const varName of requiredVars) {
+    const value = import.meta.env[varName];
+    if (!value) {
+      throw new EnvironmentError(`Missing required environment variable: ${varName}`);
+    }
+  }
+};
+
+validateEnvVariables();
+
+const PROJECT_ID = import.meta.env.VITE_APPWRITE_PROJECT_ID;
+const DATABASE_ID = import.meta.env.VITE_APPWRITE_DATABASE_ID;
+const TABLE_ID = import.meta.env.VITE_APPWRITE_Table_ID;
 
 const client = new Client()
   .setEndpoint("https://fra.cloud.appwrite.io/v1")
@@ -18,7 +38,7 @@ export type UpdateSearchCountProps = {
 export const updateSearchCount = async ({
   searchTerm,
   movie,
-}: UpdateSearchCountProps) => {
+}: UpdateSearchCountProps): Promise<void> => {
   try {
     const { id, poster_path } = movie;
 
@@ -29,13 +49,13 @@ export const updateSearchCount = async ({
     });
 
     if (result.total > 0) {
-      const row = result.rows[0];
+      const row = result.rows[0] as TrendingMovie;
 
       await tablesDB.updateRow({
         databaseId: DATABASE_ID,
         tableId: TABLE_ID,
         rowId: row.$id,
-        data: { count: row.count + 1 },
+        data: { count: (row.count ?? 0) + 1 },
       });
     } else {
       await tablesDB.createRow({
@@ -43,7 +63,7 @@ export const updateSearchCount = async ({
         tableId: TABLE_ID,
         rowId: ID.unique(),
         data: {
-          searchTerm: searchTerm,
+          searchTerm,
           count: 1,
           poster_url: `https://image.tmdb.org/t/p/w500${poster_path}`,
           movie_id: id,
@@ -51,11 +71,12 @@ export const updateSearchCount = async ({
       });
     }
   } catch (error) {
-    console.error("Error updating search count:", error);
+    const errorMessage = getErrorMessage(error);
+    console.error("Error updating search count:", errorMessage);
   }
 };
 
-export const getTrendingMovies = async (): Promise<Models.DefaultRow[]> => {
+export const getTrendingMovies = async (): Promise<TrendingMovie[]> => {
   try {
     const result = await tablesDB.listRows({
       databaseId: DATABASE_ID,
@@ -63,9 +84,10 @@ export const getTrendingMovies = async (): Promise<Models.DefaultRow[]> => {
       queries: [Query.orderDesc("count"), Query.limit(5)],
     });
 
-    return result.rows;
+    return result.rows as TrendingMovie[];
   } catch (error) {
-    console.error("Error fetching trending movies:", error);
+    const errorMessage = getErrorMessage(error);
+    console.error("Error fetching trending movies:", errorMessage);
     return [];
   }
 };

@@ -1,11 +1,17 @@
+import type { FC, SubmitEventHandler } from "react";
+
 type SearchProps = {
   searchText: string;
   fnSearchTerm: (searchTerm: string) => void;
 };
 
-const Search = ({ searchText, fnSearchTerm }: SearchProps) => {
+const Search: FC<SearchProps> = ({ searchText, fnSearchTerm }) => {
+  const handleSubmit: SubmitEventHandler<HTMLFormElement> = (e) => {
+    e.preventDefault();
+  };
+
   return (
-    <div className="search">
+    <form className="search" onSubmit={handleSubmit}>
       <div>
         <img src="search.svg" alt="Search" />
 
@@ -13,10 +19,11 @@ const Search = ({ searchText, fnSearchTerm }: SearchProps) => {
           type="text"
           placeholder="Search here..."
           value={searchText}
-          onChange={(e) => fnSearchTerm(e.target.value)}
+          onChange={(e) => fnSearchTerm(e.currentTarget.value)}
+          aria-label="Search movies"
         />
       </div>
-    </div>
+    </form>
   );
 };
 
